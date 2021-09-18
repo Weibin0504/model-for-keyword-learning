@@ -1,0 +1,186 @@
+# -*- coding: utf-8 -*-
+"""
+Created on Tue Dec 22 10:01:50 2020
+
+@author: weibin
+"""
+
+import xlrd,xlsxwriter
+import pandas as pd
+import re
+import sys
+import time
+
+sys.path.append("../")
+
+from wordcloud import WordCloud
+import matplotlib.pyplot as plt  #绘制图像的模块
+import jieba                    #jieba分词
+path = 'H:\\data\\0125_dict\\'
+
+
+def txt_del_line():
+    lines = (i for i in open(path+'zalo_res0123.txt', 'r') if i[0:4] !='NULL' )
+    f = open('test_0123_02.txt', 'w', encoding="utf-8")
+    f.writelines(lines)
+    f.close()
+
+#1.国内IP
+def ip_process():
+    file = open(path+'CN-20201222.txt','r',encoding= 'UTF-8')
+    file_w = open(path+'cn_ip.txt','a',encoding= 'UTF-8')
+    for i in file.readlines():
+        file_w.write(i.split(' ')[0].split('.')[0]+'.'+i.split(' ')[0].split('.')[1]+'.0.0\n')
+    file.close()
+    file_w.close()
+    
+
+#待合并excel
+allxls=[path+"1.xls",path+"2.xls",path+"3.xls",path+"4.xls",path+"5.xls",
+        path+"6.xls",path+"7.xls",path+"8.xls",path+"9.xls",path+"10.xls"]
+
+#目标excel
+end_xls=path+"final_excel.xls"
+
+def open_xls(file):
+    try:
+        fh=xlrd.open_workbook(file)
+        return fh
+    except Exception as e:
+        print("打开文件错误："+e)
+
+
+#根据excel名以及第几个标签信息就可以得到具体标签的内容
+def get_file_value(filename,sheetnum):
+    rvalue=[]
+    fh=open_xls(filename)
+    sheet=fh.sheets()[sheetnum]
+    row_num=sheet.nrows
+    for rownum in range(0,row_num):
+        rvalue.append(sheet.row_values(rownum))
+    return rvalue
+
+def excel_cat():
+    #获取第一个excel的sheet个数以及名字作为标准
+    first_file_fh=open_xls(allxls[0])
+    first_file_sheet=first_file_fh.sheets()
+    first_file_sheet_num=len(first_file_sheet)
+    sheet_name=[]
+    for sheetname in first_file_sheet:
+        sheet_name.append(sheetname.name)
+    
+    
+    #定义一个目标excel
+    endxls=xlsxwriter.Workbook(end_xls)
+    
+    all_sheet_value=[]
+    
+    #把所有内容都放到列表all_sheet_value中
+    for sheet_num in range(0,first_file_sheet_num):
+        all_sheet_value.append([])
+        for file_name in allxls:
+            print("正在读取"+file_name+"的第"+str(sheet_num+1)+"个标签...")
+            file_value=get_file_value(file_name,sheet_num)
+            all_sheet_value[sheet_num].append(file_value)
+    
+    #print(all_sheet_value)
+    
+    num=-1
+    sheet_index=-1
+    
+    #将列表all_sheet_value的内容写入目标excel
+    for sheet in all_sheet_value:
+        sheet_index+=1
+        end_xls_sheet=endxls.add_worksheet(sheet_name[sheet_index])
+        num+=1
+        num1=-1
+        for sheet1 in sheet:
+            for sheet2 in sheet1:
+                num1+=1
+                num2=-1
+                for sheet3 in sheet2:
+                    num2+=1
+                    #print(num,num1,num2,sheet3)
+                    #在第num1行的第num2列写入sheet3的内容
+                    end_xls_sheet.write(num1,num2,sheet3)
+    
+    endxls.close()
+    print("文件合并完成")
+    
+#3.过滤正常网站
+def data_process():       
+    data = pd.DataFrame(pd.read_excel(path+'final_excel.xls'))
+    res_data = pd.DataFrame(columns=('CAPTURE_TIME', 'URL', 'STRDST_IP', '_QUERY_CONTENT', 'AUTH_ACCOUNT', '_HOST'))
+    for i, row in data.iterrows():
+        if len(str(row['URL']))>5:
+            if re.search('/',row['URL']):
+                if  re.search('\d+',row['URL'].split('/')[0]):
+                    res_data = res_data.append([{'CAPTURE_TIME':row['CAPTURE_TIME'],'URL':row['URL'],'STRDST_IP':row['STRDST_IP'],
+                                    '_QUERY_CONTENT':row['_QUERY_CONTENT'], 'AUTH_ACCOUNT':row['AUTH_ACCOUNT'], 
+                                    '_HOST':row['URL'].split('/')[0]}],ignore_index=True)
+            else:
+                if re.search('\d+',row['URL'].split('/')[0]):
+                    res_data = res_data.append([{'CAPTURE_TIME':row['CAPTURE_TIME'],'URL':row['URL'],'STRDST_IP':row['STRDST_IP'],
+                                    '_QUERY_CONTENT':row['_QUERY_CONTENT'], 'AUTH_ACCOUNT':row['AUTH_ACCOUNT'], 
+                                    '_HOST':row['URL'].split('/')[0]}],ignore_index=True)
+    res_data.to_excel(path+'guowai_data.xlsx')
+
+#词云
+    
+def wordcloud():
+    zalo_data = pd.DataFrame(pd.read_excel(path+'guowai_data.xlsx'))
+    stopwords = [line.strip() for line in open(path+'stopwords.txt', encoding='gbk').readlines()]  # list类型
+    cut_text = ''
+    text_split_no = []
+    for i,row in zalo_data.iterrows():
+        if len(row['_QUERY_CONTENT'])>0:
+            text_split = jieba.cut(row['_QUERY_CONTENT'])
+            for word in text_split:
+                if word not in stopwords:
+                    text_split_no.append(word)
+    cut_text =' '.join(text_split_no) 
+    
+    wordcloud = WordCloud(font_path="C://Windows//Fonts//simkai.ttf",background_color="white",width=1000,height=880).generate(cut_text)
+    
+    plt.imshow(wordcloud, interpolation="bilinear")
+    plt.axis("off")
+    plt.show()
+    wordcloud.to_file(path+'show_Chinese3.png')
+'''
+1610726400
+1611331200
+'''
+def time_process():       
+    data = pd.DataFrame(pd.read_excel(path+'jiangmen.xlsx'))
+    data['capture_time_new'] = ''
+    #res_data = pd.DataFrame(columns=('auth_account', 'capture_time', 'puserid'))
+    for i,row in data.iterrows():
+        data['capture_time_new'][i] = time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(row['capture_time']))
+        '''
+        res_data = res_data.append([{'auth_account':row['auth_account'],'capture_time':time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(row['capture_time'])),
+                                    'puserid':row['puserid']}],ignore_index=True)
+        '''
+    data.to_excel('jiangmen_01.xlsx')
+
+def dict2excel():
+    res_data = pd.DataFrame(columns=('PUSERID', 'SRC_AUTH_ACCOUNT', 'ACTION','CAPTURE_TIME'))
+    p_1 = re.compile(r'[#][\s][[](.*?)[]]')
+    p_2 = re.compile(r'[{](.*?)[}]')
+    for i in open(path+'zalo_0125.nb', 'r'):
+        dict_list = re.findall(p_1,i)
+        if dict_list:
+            for j in dict_list:
+                res_list = re.findall(p_2,j)
+            res_data = res_data.append([{'PUSERID':res_list[0].split(':')[1],
+                                         'SRC_AUTH_ACCOUNT':res_list[1].split(':')[1],
+                                         'ACTION':res_list[2].split(':')[1],
+                                         'CAPTURE_TIME':time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(int(res_list[3].split(':')[1])))
+                                    }],ignore_index=True)
+    res_data.to_excel(path+'res_0125_02.xlsx')
+    
+
+    
+if __name__ == "__main__":
+    dict2excel()
+
+            
